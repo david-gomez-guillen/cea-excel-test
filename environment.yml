@@ -1,0 +1,14 @@
+# Conda environment of the model. THALASSA builds it the first time the model is
+# loaded and points reticulate to its Python (RETICULATE_PYTHON). The model is the
+# workbook cea_model.xlsx, which cea_workbook.py calculates with the formulas
+# package (a Python implementation of Excel's calculation engine).
+name: cea-excel-test
+channels:
+  - conda-forge
+dependencies:
+  - r-base
+  - r-reticulate
+  - python=3.12
+  - numpy
+  - openpyxl
+  - formulas
