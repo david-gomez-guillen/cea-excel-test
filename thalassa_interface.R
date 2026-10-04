@@ -2,11 +2,11 @@
 #
 # The model is the Excel workbook cea_model.xlsx: every calculation is a formula
 # in it. This file only describes the model to the app and runs the workbook
-# through cea_workbook.py, which recalculates it with the Python package
-# formulas (an implementation of Excel's calculation engine), called from R with
-# reticulate. Parameter names, labels, bounds, base values, strategies and age
-# groups are all read from the workbook, so the workbook is the only place where
-# they are set.
+# through cea_workbook.py and xlsx_model.py, which recalculate it with the Python
+# package formulas (an implementation of Excel's calculation engine), called from
+# R with reticulate. Parameter names, labels, bounds, base values, strategies and
+# age groups are all read from the workbook (its Interface sheet lists them), so
+# the workbook is the only place where they are set.
 #
 # reticulate uses the Python of the RETICULATE_PYTHON environment variable, which
 # the app sets to the Python of the model's conda environment (environment.yml).

@@ -45,6 +45,7 @@ The differences from the model in `cea-model-test`:
 | Transition matrix | The 4×4 matrix of any strategy and age, and a check that cohort × matrix gives the trace's next row |
 | Results | Per-person costs, QALYs and net monetary benefit; ICERs against strategy 1; the efficiency frontier; cost breakdown; cancer outcomes; diagnosed incidence by age group |
 | Charts | Cost-effectiveness plane with the willingness-to-pay line, incidence by age, advanced cancer and cancer deaths over time, Markov trace |
+| Interface | For code, not learners: which cells are the inputs and the results (see below) |
 
 The formulas use named ranges (for example `=(1-D9)*E9`, `=F9*screen_participation`) so that they
 read like the model's equations. Only functions from Excel 2007 are used, for compatibility with
@@ -53,11 +54,36 @@ values even in Excel's Protected View and in file previews.
 
 ## Running it from code
 
-[cea_workbook.py](cea_workbook.py) runs the workbook with the
+[xlsx_model.py](xlsx_model.py) runs a workbook with the
 [`formulas`](https://github.com/vinci1it2000/formulas) package, a Python implementation of the
-Excel calculation engine. It writes the inputs into the named input cells, recalculates and reads
-the named output cells. The model logic exists only in the xlsx, and the file on disk is never
-modified.
+Excel calculation engine. It writes the inputs into the input cells, recalculates and reads the
+output cells. The model logic exists only in the xlsx, and the file on disk is never modified.
+
+Which cells are inputs and outputs is declared in the workbook's **Interface** sheet, one row per
+input or output:
+
+| Column | Meaning |
+|---|---|
+| Name | What code calls it |
+| Role | `input` or `output` |
+| Cell | A cell, a range or a defined name. Blank: the defined name called Name |
+| Label, Unit, Group | Text that describes it (optional; can be formulas pointing to the workbook's own labels) |
+| Min, Max | Bounds of an input. Blank: those of the cell's data validation |
+| Labels | A range or defined name with one label per row of a table, such as age groups (optional) |
+
+The engine knows nothing else about the model, so any workbook can be run the same way: add an
+Interface sheet (or, to leave the file untouched, write the same table as a CSV file) and
+
+```python
+from xlsx_model import XlsxModel
+
+model = XlsxModel('other_model.xlsx')                 # or XlsxModel('other_model.xlsx', 'interface.csv')
+model.inputs['p_cure'].base, model.inputs['p_cure'].max   # base value and bounds
+model.run({'p_cure': 0.8})                           # {output name: value, list or list of rows}
+```
+
+[cea_workbook.py](cea_workbook.py) is the part specific to this workbook: it fills the strategy
+slots and arranges the outputs into one row per strategy.
 
 ```python
 from cea_workbook import WorkbookModel
@@ -71,6 +97,8 @@ res['summary']    # cost, qalys, life_years, nmb, icer_vs_first, cancer deaths..
 res['frontier']   # strategies sorted by cost, with status and ICER
 res['incidence']  # diagnosed cancers per 100,000 person-years, by age group
 ```
+
+An age table can also be given as a dict keyed by age group, such as `{'40-44': 0.0003, ...}`.
 
 Each run recalculates the whole workbook (about 16,000 cells), which takes about 3 s. That is fine
 for scenarios and one-way sensitivity analysis. It is slow for calibration or a large
@@ -98,7 +126,8 @@ Which files are needed depends on how the model is used:
 | File | Excel only | From Python | In THALASSA | Purpose |
 |---|:-:|:-:|:-:|---|
 | `cea_model.xlsx` | ✓ | ✓ | ✓ | The model |
-| `cea_workbook.py` | | ✓ | ✓ | Runs the workbook from code |
+| `xlsx_model.py` | | ✓ | ✓ | Runs any workbook with an Interface sheet from code |
+| `cea_workbook.py` | | ✓ | ✓ | Arranges the inputs and results of this workbook |
 | `thalassa_interface.R` | | | ✓ | Describes the model to THALASSA and runs it |
 | `overview.md` | | | ✓ | Text of the Overview tab |
 | `environment.yml` | | | ✓ | Conda environment of the model (R, reticulate, Python, formulas) |
@@ -110,6 +139,7 @@ The other files are only for developing the model:
 | `build_workbook.py` | Writes the workbook with openpyxl, draws the state diagram and embeds the computed values |
 | `reference_model.py` | An independent NumPy implementation of the same model. It is the source of the base values and is used to check the workbook |
 | `test_workbook.py` | Compares the workbook against the reference: base case, random parameters, random strategies, dominance logic and input checks |
+| `test_xlsx_model.py` | Tests of the generic engine on a small workbook it builds |
 | `tests/run_tests.R` | Tests of the THALASSA interface |
 | `assets/model_diagram.png` | State diagram embedded in the workbook |
 | `requirements.txt` | Python packages for building and testing |
@@ -117,7 +147,7 @@ The other files are only for developing the model:
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python build_workbook.py               # regenerate cea_model.xlsx
-.venv/bin/python -m pytest -q test_workbook.py   # about 1.5 min
+.venv/bin/python -m pytest -q test_xlsx_model.py test_workbook.py   # about 2 min
 
 conda env create -p ./env -f environment.yml
 RETICULATE_PYTHON=./env/bin/python ./env/bin/Rscript tests/run_tests.R   # about 1 min
