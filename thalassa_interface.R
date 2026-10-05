@@ -68,10 +68,34 @@ strategy.id <- function(label) gsub('^_|_$', '', gsub('[^a-z0-9]+', '_', tolower
 WORKBOOK.STRATEGIES <- MODEL$base_strategies
 names(WORKBOOK.STRATEGIES) <- sapply(WORKBOOK.STRATEGIES, function(s) strategy.id(s$name))
 
+# The description of a strategy is the Description column of the strategy table.
+# Its attributes are made from the columns the workbook runs it with (screens,
+# first and last age screened), so they always say what the workbook does with
+# it. A strategy that does not screen ignores the ages, and has none.
+strategy.screens <- function(s) tolower(trimws(s$screens)) == 'yes'
+
 get.strategies <- function() {
   return(lapply(names(WORKBOOK.STRATEGIES), function(id) {
-    list(name=id, display.name=WORKBOOK.STRATEGIES[[id]]$name)
+    s <- WORKBOOK.STRATEGIES[[id]]
+    attributes <- if (strategy.screens(s)) {
+      list(screening='Yes', first.age=as.integer(s$first_age), last.age=as.integer(s$last_age))
+    } else {
+      list(screening='No')
+    }
+    list(name=id, display.name=s$name, description=s$description, attributes=attributes)
   }))
+}
+
+get.strategy.attributes <- function() {
+  # What describes the strategies, shown as columns of the Strategies tab.
+  # Whether a strategy screens is drawn as the shape of its point on the base
+  # case plot, and the first age screened as its fill, which is what tells the
+  # screening strategies apart.
+  return(list(
+    screening=list(label='Screening', plot='shape', values=c(No='diamond', Yes='circle')),
+    first.age=list(label='First age screened', plot='fill', ordered=TRUE),
+    last.age='Last age screened'
+  ))
 }
 
 get.strata <- function() {
@@ -81,37 +105,46 @@ get.strata <- function() {
 
 # ---- Parameters -------------------------------------------------------------------
 
-# Constraints: each returns TRUE when the parameters are acceptable. A parameter
-# split into strata arrives as a list, hence the unlist(). A constraint that ties
-# several parameters together is declared on all of them, so that the app
-# highlights whichever the user changed.
-is.between <- function(name, lo, hi) {
-  force(name); force(lo); force(hi)
-  function(params) {
-    v <- unlist(params[[name]])
-    all(v >= lo) && (is.null(hi) || all(v <= hi))
-  }
+# Constraints: each is called as f(par.name, params), with the name of the
+# parameter declaring it and the whole parameter list, and returns TRUE when the
+# values are acceptable or the message shown for them when they are not. The
+# ranges of the Interface sheet need none: the app checks them itself, from the
+# min.value and max.value of each parameter. A constraint that ties several
+# parameters together is declared on all of them, so that the app highlights
+# whichever the user changed. A parameter split into strata arrives as a list,
+# hence the unlist().
+utilities.in.order <- function(par.name, params) {
+  u <- lapply(c(healthy='u.healthy', early='u.early', advanced='u.advanced'),
+              function(name) unlist(params[[name]]))
+  if (any(u$advanced > u$early) || any(u$early > u$healthy))
+    sprintf(paste('Quality of life must not rise as the cancer advances',
+                  '(healthy %s, early cancer %s, advanced cancer %s)'),
+            format(u$healthy), format(u$early), format(u$advanced))
+  else TRUE
 }
-utilities.in.order <- function(params) {
-  params[['u.advanced']] <= params[['u.early']] && params[['u.early']] <= params[['u.healthy']]
-}
-UTILITY.ORDER <- list(`Quality of life must not rise as the cancer advances`=utilities.in.order)
+
+# The distribution the PSA draws each input from. The workbook has no notion of
+# one, so they are declared here. The discount rates declare none, which keeps
+# them out of the PSA.
+DISTRIBUTIONS <- c(
+  p_background_death='beta', p_cancer_onset='beta',
+  p_detect_symptoms='beta', p_progression='beta', p_cure_early='beta', p_death_advanced='beta',
+  screen_participation='beta', screen_sensitivity='beta', screen_specificity='beta',
+  cost_screen_test='gamma', cost_followup_test='gamma', cost_early_treatment='gamma',
+  cost_advanced_year='gamma',
+  u_healthy='beta', u_early='beta', u_advanced='beta'
+)
 
 parameter.descriptors <- function(py.name) {
   info <- MODEL$parameter_info[[py.name]]
   name <- r.name(py.name)
   base <- MODEL$base_parameters[[py.name]]
   descriptor <- list(name=name, display.name=info$label, class=info$section)
+  if (py.name %in% names(DISTRIBUTIONS)) descriptor$distribution <- DISTRIBUTIONS[[py.name]]
   if (!is.null(info$min)) descriptor$min.value <- info$min
   if (!is.null(info$max)) descriptor$max.value <- info$max
-  if (!is.null(info$min)) {
-    range.text <- if (is.null(info$max)) sprintf('%s or more', info$min) else
-      sprintf('between %s and %s', info$min, info$max)
-    descriptor$constraints <- setNames(list(is.between(name, info$min, info$max)),
-                                       sprintf('%s must be %s', info$label, range.text))
-  }
   if (name %in% c('u.healthy', 'u.early', 'u.advanced')) {
-    descriptor$constraints <- c(descriptor$constraints, UTILITY.ORDER)
+    descriptor$constraints <- utilities.in.order
   }
   if (!py.name %in% STRATIFIED) return(list(c(descriptor, list(base.value=base))))
   # One descriptor per age group, each with its own base value.

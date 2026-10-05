@@ -16,7 +16,8 @@ Parameters are the input names of the workbook (column "Name in formulas" of the
 Inputs sheet): a number for a single input, or a list of 12 numbers (or a dict
 keyed by age group) for the age tables `p_background_death` and
 `p_cancer_onset`. Strategies can be replaced with a list of up to three dicts
-with keys name, screens ('Yes' or 'No'), first_age and last_age.
+with keys name, screens ('Yes' or 'No'), first_age and last_age, and optionally
+description, which the calculations do not use.
 """
 
 from pathlib import Path
@@ -27,7 +28,11 @@ DEFAULT_PATH = Path(__file__).with_name('cea_model.xlsx')
 
 # The inputs that describe the strategies, one cell per strategy slot.
 STRATEGY_FIELDS = {'name': 'strategy_name', 'screens': 'strategy_screens',
-                   'first_age': 'strategy_first_age', 'last_age': 'strategy_last_age'}
+                   'first_age': 'strategy_first_age', 'last_age': 'strategy_last_age',
+                   'description': 'strategy_description'}
+# The fields a strategy can leave out. No formula reads the description: it is
+# only text for whoever shows the strategies.
+OPTIONAL_STRATEGY_FIELDS = {'description': ''}
 # The input whose labels are the age groups.
 AGE_TABLE = 'p_cancer_onset'
 
@@ -75,7 +80,10 @@ class WorkbookModel:
             # Unused slots repeat the first strategy; their results are dropped.
             padded = list(strategies) + [strategies[0]] * (self.n_slots - len(strategies))
             for field, nm in STRATEGY_FIELDS.items():
-                values[nm] = [s[field] for s in padded]
+                if field in OPTIONAL_STRATEGY_FIELDS:
+                    values[nm] = [s.get(field, OPTIONAL_STRATEGY_FIELDS[field]) for s in padded]
+                else:
+                    values[nm] = [s[field] for s in padded]
         out = self.engine.run(values)
 
         n = len(strategies) if strategies is not None else self.n_slots
