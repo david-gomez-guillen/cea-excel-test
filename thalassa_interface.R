@@ -273,7 +273,7 @@ get.calibration.schemes <- function() {
       initial_guess=unlist(MODEL$base_parameters$p_cancer_onset),
       error_function=calibration.error,
       latent_space_training_set=generate.training.dataset,
-      other.plots=NULL
+      evaluation.plots=NULL
     )))
 }
 
